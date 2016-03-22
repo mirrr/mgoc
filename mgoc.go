@@ -5,7 +5,6 @@ import (
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mirrr/types.v1"
 	"reflect"
-	"strings"
 	"sync"
 	"time"
 )
@@ -19,7 +18,7 @@ type (
 		interval   time.Duration
 		collection *mgo.Collection
 		sliceType  reflect.Type
-		el         interface{}
+		elType     reflect.Type
 		idField    string
 		pass       bool
 		runned     bool
@@ -39,7 +38,7 @@ func New(collection *mgo.Collection, el interface{}, idField string) *Cache {
 		collection: collection,
 		sliceType:  reflect.SliceOf(reflect.TypeOf(el)),
 		idField:    idField,
-		el:         el,
+		elType:     reflect.TypeOf(el),
 		query:      obj{},
 		interval:   time.Second,
 	}
@@ -50,8 +49,8 @@ func (c *Cache) Query(query interface{}) *Cache {
 	return c
 }
 
-func (c *Cache) Group(path string) *Cache {
-	c.path = strings.Split(path, "/")
+func (c *Cache) Group(path ...string) *Cache {
+	c.path = path
 	return c
 }
 
@@ -146,7 +145,10 @@ func (c *Cache) branch(po interface{}, current reflect.Value, id string, k int) 
 func (c *Cache) Get(id interface{}) interface{} {
 	c.Lock()
 	defer c.Unlock()
-	return c.list[types.String(id)]
+	if ret, exists := c.list[types.String(id)]; exists {
+		return ret
+	}
+	return reflect.New(c.elType).Interface()
 }
 
 func (c *Cache) Len() int {
@@ -155,17 +157,13 @@ func (c *Cache) Len() int {
 	return len(c.list)
 }
 
-func (c *Cache) GetIDsByPath(key string) (ret interface{}) {
-	keys := strings.Split(key, "/")
+func (c *Cache) GetByGroup(keys ...interface{}) (ret interface{}) {
 	ret = []string{}
-
 	c.Lock()
 	defer c.Unlock()
-
 	if len(c.pathObj) < len(keys) {
 		return
 	}
-
-	ret = types.MGet(c.pathObj, types.Slice(keys)...)
+	ret = types.MGet(c.pathObj, keys...)
 	return
 }
